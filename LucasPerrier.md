@@ -9,6 +9,34 @@
 
 ---
 
+
+## Roadmap 1: More detailed
+
+Architecture Overview
+
+- Data Processing Pipeline:
+  - Parse Excel file to extract Q&A pairs, topics, and metadata
+  - Create document embeddings (e.g., sentence transformers)
+  - Store vectors in a vector database (ChromaDB, Pinecone, or Weaviate)
+
+- Core Components:
+  - Vector Search Engine for semantic similarity matching
+  - LLM Integration (e.g., OpenAI GPT-4, Anthropic Claude, or Llama-2/3)
+  - Context Assembly to retrieve top-k relevant documents
+  - Response Generation using retrieved knowledge to produce HTML answers
+
+- Implementation Stack:
+  - Backend: FastAPI or Flask with LangChain
+  - Vector DB: ChromaDB (local) or Pinecone (cloud)
+  - Frontend: Vue.js (integrates with existing infrastructure)
+  - Database: MariaDB for conversation logs and analytics
+
+- Self-Learning Mechanism:
+  - Log user queries and feedback
+  - Continuously update embeddings based on new data/feedback
+  - Run A/B tests to improve response quality over time
+
+
 ## Roadmap 1: RAG-based Solution (Retrieval-Augmented Generation)
 
 Architecture highlights
@@ -33,6 +61,34 @@ Cons
 
 ---
 
+## Roadmap 1: More detailed
+
+Architecture Overview
+
+- Data Processing Pipeline:
+  - Parse Excel file to extract Q&A pairs, topics, and metadata
+  - Create document embeddings (e.g., sentence transformers)
+  - Store vectors in a vector database (ChromaDB, Pinecone, or Weaviate)
+
+- Core Components:
+  - Vector Search Engine for semantic similarity matching
+  - LLM Integration (e.g., OpenAI GPT-4, Anthropic Claude, or Llama-2/3)
+  - Context Assembly to retrieve top-k relevant documents
+  - Response Generation using retrieved knowledge to produce HTML answers
+
+- Implementation Stack:
+  - Backend: FastAPI or Flask with LangChain
+  - Vector DB: ChromaDB (local) or Pinecone (cloud)
+  - Frontend: Vue.js (integrates with existing infrastructure)
+  - Database: MariaDB for conversation logs and analytics
+
+- Self-Learning Mechanism:
+  - Log user queries and feedback
+  - Continuously update embeddings based on new data/feedback
+  - Run A/B tests to improve response quality over time
+ 
+  <img width="768" height="821" alt="image" src="https://github.com/user-attachments/assets/1b59dae4-bd06-4e13-b14a-3ef184365630" />
+
 ## Roadmap 2: NLP Classification + Similarity
 
 Architecture highlights
@@ -54,25 +110,6 @@ Cons
 
 ---
 
-## Roadmap 3: Hybrid (Knowledge Graph + Fine-tuned Models)
-
-Architecture highlights
-- Build semantic knowledge graph of topics, entities, relations.
-- Combine graph traversal with semantic retrieval and a fine-tuned LLM.
-- Multi-turn dialog manager; explainability via graph paths.
-
-Implementation stack
-- Neo4j, PyTorch/HF for fine-tuning, optional GNNs; Rasa/dialog manager.
-
-Pros
-- Strong performance, context, and explainability.
-- Advanced features (multi-turn, proactive suggestions).
-
-Cons
-- Highest complexity, longest timeline, specialized skills.
-- Heavier compute/storage and higher operational risk.
-
----
 
 ## Recommendation
 - Primary: Roadmap 1 (RAG) for best balance of quality and feasibility.
