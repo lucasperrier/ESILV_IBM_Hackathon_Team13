@@ -123,6 +123,9 @@ def main():
 
     print(f"[INFO] Dataset global : X.shape={X.shape}")
     print(f"       y_fault shape={y_fault.shape}, y_type shape={y_type.shape}, y_sev shape={y_sev.shape}")
+    
+
+    print("[CHECK] Avant nettoyage : NaN dans X_windows ? ", np.isnan(X).any())
 
     # 5) Sauvegarde
     np.save(processed_dir / "X_windows.npy", X)
