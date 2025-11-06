@@ -14,6 +14,7 @@ from config import cfg
 from features.time_domain import extract_time_features_from_windows
 from features.freq_domain import extract_freq_features_from_windows
 
+import matplotlib.pyplot as plt
 
 # XGBoost GPU
 from models.classical import predict_with_xgb
@@ -89,21 +90,126 @@ def print_metrics_table(all_results):
         )
 
 
-def print_comb_confusions(all_results):
-    """Affiche les matrices de confusion combinées, avec décodage (fault,type,sev)."""
-    print("\n===== MATRICES DE CONFUSION SUR LES COMBINAISONS (fault,type,sev) =====")
-    for name, m in all_results.items():
-        print(f"\n--- {name} ---")
-        classes = m["comb_classes"]
-        cm = m["comb_confusion"]
-        print("Classes (codes fault*100+type*10+sev) :", classes)
-        # Afficher mapping lisible
-        print("Mapping code -> (fault, type, sev) :")
-        for c in classes:
-            f, t, s = decode_combined_labels(np.array([c]))
-            print(f"  {c} -> (fault={int(f[0])}, type={int(t[0])}, sev={int(s[0])})")
-        print("Confusion matrix :")
-        print(cm)
+def plot_metric_bars(all_results):
+    """
+    Affiche de beaux graphiques comparant les modèles sur les principales métriques.
+    """
+    models = list(all_results.keys())
+
+    # Préparer les vecteurs de métriques
+    fault_acc = [all_results[m]["fault_acc"] for m in models]
+    fault_f1 = [all_results[m]["fault_f1"] for m in models]
+
+    type_acc = [all_results[m]["type_acc"] for m in models]
+    type_f1 = [all_results[m]["type_f1_macro"] for m in models]
+
+    sev_mae = [all_results[m]["sev_mae"] for m in models]
+    sev_acc = [all_results[m]["sev_acc"] for m in models]
+
+    comb_acc = [all_results[m]["comb_acc"] for m in models]
+    comb_f1 = [all_results[m]["comb_f1_macro"] for m in models]
+
+    x = np.arange(len(models))
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    fig.suptitle("Comparaison des modèles – métriques principales", fontsize=16)
+
+    # 1) Fault detection
+    ax = axes[0, 0]
+    ax.bar(x - 0.15, fault_acc, width=0.3, label="Accuracy")
+    ax.bar(x + 0.15, fault_f1, width=0.3, label="F1")
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_title("Fault detection")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.3)
+
+    # 2) Fault type
+    ax = axes[0, 1]
+    ax.bar(x - 0.15, type_acc, width=0.3, label="Accuracy")
+    ax.bar(x + 0.15, type_f1, width=0.3, label="F1 macro")
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_title("Fault type")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.3)
+
+    # 3) Severity (MAE) – plus petit = mieux
+    ax = axes[0, 2]
+    ax.bar(x, sev_mae, width=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_title("Severity – MAE (plus bas = mieux)")
+    ax.grid(axis="y", alpha=0.3)
+
+    # 4) Severity (accuracy)
+    ax = axes[0, 3]
+    ax.bar(x, sev_acc, width=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_title("Severity – Accuracy")
+    ax.grid(axis="y", alpha=0.3)
+
+    # 5) Combinaisons complètes – accuracy
+    ax = axes[1, 0]
+    ax.bar(x, comb_acc, width=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_title("Combinaisons (fault+type+sev) – Accuracy")
+    ax.grid(axis="y", alpha=0.3)
+
+    # 6) Combinaisons complètes – F1 macro
+    ax = axes[1, 1]
+    ax.bar(x, comb_f1, width=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_title("Combinaisons – F1 macro")
+    ax.grid(axis="y", alpha=0.3)
+
+    # 7–8) Cases vides ou libres (tu peux les réutiliser plus tard)
+    axes[1, 2].axis("off")
+    axes[1, 3].axis("off")
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.88)  # laisse la place au titre
+    plt.show()
+
+from math import pi
+
+def plot_radar_metrics(all_results):
+    """Trace un radar chart pour comparer les modèles sur plusieurs métriques."""
+    models = list(all_results.keys())
+    metrics = ["fault_acc", "fault_f1", "type_acc", "type_f1_macro", "sev_acc", "comb_acc", "comb_f1_macro"]
+
+    # Normalisation : MAE doit être inversé si on l'ajoute (ici on ne le garde pas)
+    values = np.array([[all_results[m][metric] for metric in metrics] for m in models])
+
+    # Radar setup
+    N = len(metrics)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+    angles += angles[:1]  # boucle fermée
+
+    fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
+    fig.suptitle("Comparaison globale des modèles (Radar Chart)", fontsize=16, y=1.08)
+
+    for i, model in enumerate(models):
+        vals = values[i].tolist()
+        vals += vals[:1]
+        ax.plot(angles, vals, label=model, linewidth=2)
+        ax.fill(angles, vals, alpha=0.15)
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(metrics, fontsize=10)
+    ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], color="grey", size=8)
+    ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.1))
+    plt.tight_layout()
+    plt.show()
 
 
 def main():
@@ -274,7 +380,8 @@ def main():
         return
 
     print_metrics_table(all_results)
-    print_comb_confusions(all_results)
+    plot_metric_bars(all_results)
+    plot_radar_metrics(all_results)
 
 
 if __name__ == "__main__":
