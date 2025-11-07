@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from joblib import load
 from PIL import Image
 import plotly.graph_objects as go
+import torch
+from models.deep_mtl import CNNMTL
 
 from config import cfg
 from data.loader import load_flight
@@ -31,7 +33,9 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-#  Mapping des codes de défaut
+# ========================================
+#  Mapping des codes de défaut → noms lisibles
+# ========================================
 FAULT_TYPE_NAMES = {
     0: "none",
     1: "crack",
@@ -48,39 +52,32 @@ def decode_fault_type(code):
         return f"Invalid ({code})"
 
 
+# =========================
 #  UTILITAIRES MODÈLES
+# =========================
 
 @st.cache_resource
-def load_xgb_model():
-    model_path = Path("models/classical_xgb_timefreq_gpu.joblib")
-    if not model_path.exists():
-        st.error(f"XGBoost model not found: {model_path}. Train it with main_train_xgb_gpu.py.")
-        return None, None
-
-    meta = load(model_path)
-    models = meta["models"]
-    feature_columns = meta["feature_columns"]
-
-    # Forcer les 3 modèles XGBoost à tourner sur CPU (évite les soucis GPU+Streamlit)
-    def _force_cpu(m):
-        try:
-            m.set_params(device="cpu", predictor="cpu_predictor")
-        except TypeError:
-            try:
-                m.set_params(predictor="cpu_predictor")
-            except Exception:
-                pass
-        try:
-            booster = m.get_booster()
-            booster.set_param({"device": "cpu", "predictor": "cpu_predictor"})
-        except Exception:
-            pass
-
-    _force_cpu(models.fault_clf)
-    _force_cpu(models.type_clf)
-    _force_cpu(models.severity_reg)
-
-    return models, feature_columns
+def load_deep_mtl_model(in_channels: int, n_fault_types: int):
+    weights_path = Path('models/deep_mtl_cnn1d.pth')
+    if not weights_path.exists():
+        st.error(f'Deep MTL weights not found: {weights_path}.')
+        return None, 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = CNNMTL(in_channels=in_channels, n_fault_types=n_fault_types)
+    try:
+        state = torch.load(weights_path, map_location=device)
+        if isinstance(state, dict) and any(k.startswith('backbone.') for k in state.keys()):
+            model.load_state_dict(state)
+        elif isinstance(state, dict) and 'state_dict' in state:
+            model.load_state_dict(state['state_dict'])
+        else:
+            model.load_state_dict(state)
+    except Exception as e:
+        st.error(f'Failed to load deep MTL weights: {e}')
+        return None, device
+    model.to(device)
+    model.eval()
+    return model, device
 
 
 @st.cache_resource
@@ -97,7 +94,9 @@ def load_normalization_stats():
     return mean, std, cols
 
 
+# =========================
 #  VISUELS DRONE / TRAJECTOIRE
+# =========================
 
 FAULT_PARTS = {
     1: "Front motor",
@@ -275,7 +274,9 @@ def generate_synthetic_trajectory(
     return x, y, z
 
 
+# =========================
 #  PIPELINE DE PREPROCESS / PREDICTION
+# =========================
 
 def preprocess_flight_df(df_raw: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -349,6 +350,28 @@ def predict_on_windows(X_windows: np.ndarray, models, feature_columns):
     return results
 
 
+def predict_on_windows_deep(X_windows: np.ndarray, model: CNNMTL, device: str) -> pd.DataFrame:
+    """Inference helper for deep MTL model to align with UI expectations."""
+    if X_windows.shape[0] == 0 or model is None:
+        return pd.DataFrame()
+    x = torch.from_numpy(X_windows.astype(np.float32)).to(device)
+    with torch.no_grad():
+        logits_fault, logits_type, logits_sev = model(x)
+        prob_fault = torch.softmax(logits_fault, dim=1)[:, 1].cpu().numpy()
+        type_pred = torch.argmax(logits_type, dim=1).cpu().numpy()
+        sev_pred = torch.argmax(logits_sev, dim=1).cpu().numpy()
+
+    results = pd.DataFrame({
+        "Fault_Prob": prob_fault,
+        "Fault_Label": (prob_fault >= 0.5).astype(int),
+        "Fault_Type": type_pred,
+        "Severity_Continuous": sev_pred.astype(float),
+        "Severity_Level": np.clip(np.round(sev_pred), 0, 3).astype(int),
+    })
+    results["Fault_Type_Name"] = results["Fault_Type"].apply(decode_fault_type)
+    return results
+
+
 def render_flight_overview(df: pd.DataFrame):
     st.subheader("Flight signals overview")
 
@@ -381,7 +404,9 @@ def get_demo_flight():
     return X_demo, t_demo
 
 
+# =========================
 #  INTERFACE STREAMLIT
+# =========================
 
 st.set_page_config(
     page_title="TrackUAVFault - Maintenance prédictive",
@@ -398,8 +423,8 @@ Interface de démonstration de la maintenance prédictive pour drones :
 - monitoring simulé pour la vidéo de présentation.
 """)
 
-models, feature_columns = load_xgb_model()
-if models is None:
+deep_model=None; deep_device="cpu"
+if False and models is None:
     st.stop()
 
 st.sidebar.header("Demo Configuration")
@@ -426,7 +451,7 @@ use_synth = False
 synth_fault_ratio = 0.3
 synth_seed = 42
 
-# mode upload .mat
+# -------- Mode upload .mat --------
 if mode == "Upload .mat DronePropA":
     st.sidebar.subheader("Upload")
     uploaded_file = st.sidebar.file_uploader("Choisir un fichier .mat", type=["mat"])
@@ -454,7 +479,7 @@ if mode == "Upload .mat DronePropA":
         if X_windows.shape[0] == 0:
             st.warning("No usable window after preprocessing.")
 
-# mode demo flight
+# -------- Mode demo flight --------
 else:
     st.sidebar.subheader("Demo")
     st.sidebar.info("Using a demo flight from preprocessed data.")
@@ -508,7 +533,7 @@ else:
         "rotation_deg": float(synth_rot),
     }
 
-    # Trajet fictif de fautes / types / sévérités
+    # --- Trajet fictif de fautes / types / sévérités ---
     # Mode démo: override automatique (pas de case à cocher)
     use_synth = True
     synth_fault_ratio = st.sidebar.slider("Proportion de fenêtres en défaut", 0.0, 1.0, 0.3, 0.05)
@@ -518,9 +543,9 @@ if X_windows is None or X_windows.shape[0] == 0:
     st.info("Waiting for a flight to start prediction...")
     st.stop()
 
-
+# =========================
 #  Trajectoire XY (global)
-
+# =========================
 def generate_synthetic_trajectory(
     n: int,
     shape: str = "lemniscate",
@@ -606,10 +631,11 @@ if n_pts > 0:
     elif synth_traj_opts is not None:
         traj_x, traj_y, traj_z = generate_synthetic_trajectory(n_pts, **synth_traj_opts)
 
-
+# =========================
 #  Prédictions pré-calculées
+# =========================
 with st.spinner("Resampling, normalisation et fenêtrage..."):
-    results_all = predict_on_windows(X_windows, models, feature_columns)
+    deep_model, deep_device = load_deep_mtl_model(in_channels=int(X_windows.shape[2]), n_fault_types=len(FAULT_TYPE_NAMES)); results_all = predict_on_windows_deep(X_windows, deep_model, deep_device)
 
 # Override par un trajet fictif si demandé (demo mode)
 if mode.startswith("Demo flight"):
@@ -639,7 +665,9 @@ if mode.startswith("Demo flight"):
     results_all["Fault_Type_Name"] = results_all["Fault_Type"].apply(decode_fault_type)
 
 
+# =========================
 #  Analyse globale
+# =========================
 
 st.markdown("---")
 st.header("Predictive maintenance analysis")
@@ -750,7 +778,9 @@ if st.button("Lancer l'analyse du vol complet"):
         st.dataframe(results[cols_to_show].head(30))
 
 
+# =========================
 #  Simulation
+# =========================
 
 st.markdown("---")
 st.header("Flight simulation & real-time monitoring")
@@ -758,7 +788,6 @@ st.header("Flight simulation & real-time monitoring")
 st.write("""
 This mode simulates real-time drone monitoring:
 At each time window, health indicators update.
-Ideal to record for your demo video.
 """)
 if simulate and st.button("Démarrer la simulation"):
     placeholder_header = st.empty()
@@ -778,7 +807,7 @@ if simulate and st.button("Démarrer la simulation"):
         fault_group = int(row["Fault_Type"]) if fault_label == 1 else 0
         t_cur = t_windows[i] if t_windows is not None and len(t_windows) > i else i * cfg.data.step_sec
 
-        # Header + image pivotée
+        # --- Header + image pivotée ---
         with placeholder_header.container():
             st.markdown(
                 f"### {'🔴' if fault_label else '🟢'} t = {t_cur:.2f}s — "
@@ -795,14 +824,14 @@ if simulate and st.button("Démarrer la simulation"):
             else:
                 st.write(f"Image manquante : {img_filename}")
 
-        # Metrics
+        # --- Metrics ---
         with placeholder_metrics.container():
             c1, c2, c3 = st.columns(3)
             c1.metric("Fault probability", f"{fault_prob:.2f}")
             c2.metric("Severity level", f"{sev_level}/3")
             c3.metric("Fault type", fault_type_name)
 
-        # Timeline temps réel (même style que l'analyse globale)
+        # --- Timeline temps réel (même style que l'analyse globale) ---
         df_sim = pd.DataFrame({
             "time": t_windows[: i + 1],
             "Severity_Level": results_all["Severity_Level"].values[: i + 1],
@@ -811,7 +840,7 @@ if simulate and st.button("Démarrer la simulation"):
         }).set_index("time")
         placeholder_plot.line_chart(df_sim[["Severity_Level", "Fault_Prob"]])
 
-        # Trajectoire XY (plus jolie)
+        # --- Trajectoire XY (plus jolie) ---
         n_points = i + 1
         fault_mask = results_all["Fault_Label"].values[:n_points] == 1
         sev_vals = results_all["Severity_Level"].values[:n_points]
@@ -865,7 +894,9 @@ if simulate and st.button("Démarrer la simulation"):
     st.success("Simulation completed. Ready to be recorded for your video!")
 
 
+# =========================
 #  Explorer un instant précis
+# =========================
 
 st.markdown("---")
 st.header("Explore a flight instant")
@@ -946,3 +977,24 @@ if not results_all.empty:
         scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode="data"),
     )
     st.plotly_chart(fig_v3d, use_container_width=True)
+
+
+def predict_on_windows_deep(X_windows: np.ndarray, model: CNNMTL, device: str) -> pd.DataFrame:
+    if X_windows.shape[0] == 0 or model is None:
+        return pd.DataFrame()
+    x = torch.from_numpy(X_windows.astype(np.float32)).to(device)
+    with torch.no_grad():
+        logits_fault, logits_type, logits_sev = model(x)
+        prob_fault = torch.softmax(logits_fault, dim=1)[:, 1].cpu().numpy()
+        type_pred = torch.argmax(logits_type, dim=1).cpu().numpy()
+        sev_pred = torch.argmax(logits_sev, dim=1).cpu().numpy()
+    results = pd.DataFrame({
+        'Fault_Prob': prob_fault,
+        'Fault_Label': (prob_fault >= 0.5).astype(int),
+        'Fault_Type': type_pred,
+        'Severity_Continuous': sev_pred.astype(float),
+        'Severity_Level': np.clip(np.round(sev_pred), 0, 3).astype(int),
+    })
+    results['Fault_Type_Name'] = results['Fault_Type'].apply(decode_fault_type)
+    return results
+
