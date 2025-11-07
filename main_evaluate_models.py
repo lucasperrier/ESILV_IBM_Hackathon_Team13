@@ -215,33 +215,20 @@ def plot_radar_metrics(all_results):
 def main():
     processed_dir = cfg.data.processed_dir
     models_dir = Path("models")
-
-    # =========================
-    #  Chargement des données
-    # =========================
     print(f"[INFO] Chargement des données depuis {processed_dir} ...")
-    X = np.load(processed_dir / "X_windows.npy")       # (n_win, win_len, n_feat)
+    X = np.load(processed_dir / "X_windows.npy") # (n_win, win_len, n_feat)
     y_fault = np.load(processed_dir / "y_fault.npy")
     y_type = np.load(processed_dir / "y_type.npy")
     y_sev = np.load(processed_dir / "y_sev.npy")
-
-    
     n_samples, win_len, n_feat = X.shape
-    print(f"[INFO] X.shape={X.shape}, n_samples={n_samples}")
 
-    # Features temps + freq (pour RF / XGB / KNN)
+    print(f"[INFO] X.shape={X.shape}, n_samples={n_samples}")
     print("[INFO] Extraction des features temporels ...")
     df_time = extract_time_features_from_windows(X)
-
     print("[INFO] Extraction des features fréquentiels ...")
     df_freq = extract_freq_features_from_windows(X, fs=cfg.data.target_fs)
-
     X_feat_full = pd.concat([df_time, df_freq], axis=1)
     print(f"[INFO] Features concaténées : shape={X_feat_full.shape}")
-
-    # =========================
-    #  Split train / test unique
-    # =========================
     idx = np.arange(n_samples)
     idx_train, idx_test = train_test_split(
         idx,
@@ -250,23 +237,13 @@ def main():
         stratify=y_fault,
     )
 
-    # y de test
     y_fault_test = y_fault[idx_test]
     y_type_test = y_type[idx_test]
     y_sev_test = y_sev[idx_test]
-
-    # fenêtres test pour deep MTL
     X_test_win = X[idx_test]
-
-    # features test pour modèles classiques / KNN
     X_feat_test_full = X_feat_full.iloc[idx_test].reset_index(drop=True)
 
     all_results = {}
-
-
-    # =========================
-    # XGBoost GPU
-    # =========================
     xgb_path = models_dir / "classical_xgb_timefreq_gpu.joblib"
     if xgb_path.exists():
         print(f"[INFO] Évaluation XGBoost GPU (fichier: {xgb_path.name}) ...")
@@ -292,9 +269,6 @@ def main():
     else:
         print("[WARN] Modèle XGBoost GPU non trouvé, skip.")
 
-    # =========================
-    # 3) KNN CUDA (labels combinés)
-    # =========================
     knn_path = models_dir / "knn_cuda_combined.pth"
     if knn_path.exists():
         print(f"[INFO] Évaluation KNN CUDA (fichier: {knn_path.name}) ...")
@@ -321,11 +295,6 @@ def main():
     else:
         print("[WARN] Modèle KNN CUDA non trouvé, skip.")
 
-    # =========================
-    # 4) Deep MTL (CNN multi-tâches)
-    # =========================
-    # adapte le nom si ton main_train_deep_mtl.py en a utilisé un autre
-
     deep_path = models_dir / "deep_mtl_cnn1d.pth"
 
     if deep_path is not None:
@@ -335,9 +304,7 @@ def main():
         state_dict = checkpoint["state_dict"]
         in_channels = checkpoint.get("n_features", n_feat)
         n_fault_types = checkpoint.get("n_fault_types", int(y_type.max() + 1))
-    
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "cpu" # cuda pour faire tourner le modele sur GPU
         model = CNNMTL(in_channels=in_channels, n_fault_types=n_fault_types).to(device)
         model.load_state_dict(state_dict)
         model.eval()
@@ -372,9 +339,6 @@ def main():
     else:
         print("[WARN] Modèle Deep MTL non trouvé, skip.")
 
-    # =========================
-    #  Affichage comparatif
-    # =========================
     if not all_results:
         print("[ERROR] Aucun modèle évalué (aucun fichier trouvé). Vérifie les chemins dans models_dir.")
         return
