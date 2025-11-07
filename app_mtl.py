@@ -23,7 +23,7 @@ from data.preprocessing import (
     normalize_df,
     sliding_windows,
 )
-# Removed XGBoost-specific feature engineering and predictor imports
+
 
 # Masquer le warning "precision loss" des moments statistiques
 warnings.filterwarnings(
@@ -32,9 +32,9 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-# ========================================
+
 #  Mapping des codes de défaut → noms lisibles
-# ========================================
+
 FAULT_TYPE_NAMES = {
     0: "none",
     1: "crack",
@@ -51,9 +51,9 @@ def decode_fault_type(code):
         return f"Invalid ({code})"
 
 
-# =========================
+
 #  UTILITAIRES MODÈLES
-# =========================
+
 
 @st.cache_resource
 def load_deep_mtl_model(in_channels: int, n_fault_types: int):
@@ -93,9 +93,9 @@ def load_normalization_stats():
     return mean, std, cols
 
 
-# =========================
+
 #  VISUELS DRONE / TRAJECTOIRE
-# =========================
+
 
 FAULT_PARTS = {
     1: "Front motor",
@@ -273,9 +273,9 @@ def generate_synthetic_trajectory(
     return x, y, z
 
 
-# =========================
+
 #  PIPELINE DE PREPROCESS / PREDICTION
-# =========================
+
 
 def preprocess_flight_df(df_raw: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -319,8 +319,6 @@ def preprocess_flight_df(df_raw: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
     return X, t_windows
 
-
-# Removed old XGBoost-based prediction function
 
 
 def predict_on_windows_deep(X_windows: np.ndarray, model: CNNMTL, device: str) -> pd.DataFrame:
@@ -377,9 +375,8 @@ def get_demo_flight():
     return X_demo, t_demo
 
 
-# =========================
 #  INTERFACE STREAMLIT
-# =========================
+
 
 st.set_page_config(
     page_title="TrackUAVFault - Maintenance prédictive",
@@ -422,7 +419,7 @@ use_synth = False
 synth_fault_ratio = 0.3
 synth_seed = 42
 
-# -------- Mode upload .mat --------
+# Mode upload .mat 
 if mode == "Upload .mat DronePropA":
     st.sidebar.subheader("Upload")
     uploaded_file = st.sidebar.file_uploader("Choisir un fichier .mat", type=["mat"])
@@ -450,7 +447,7 @@ if mode == "Upload .mat DronePropA":
         if X_windows.shape[0] == 0:
             st.warning("No usable window after preprocessing.")
 
-# -------- Mode demo flight --------
+# Mode demo flight
 else:
     st.sidebar.subheader("Demo")
     st.sidebar.info("Using a demo flight from preprocessed data.")
@@ -458,7 +455,7 @@ else:
 
     st.subheader("Trajectoire fictive 3D")
     df_raw = pd.DataFrame({"time": t_windows, "q_1": np.zeros_like(t_windows)})
-    # --- Trajectoire fictive XYZ (configurable) ---
+    # Trajectoire fictive XYZ (configurable) 
     st.sidebar.markdown("### Trajectoire fictive (XYZ)")
     synth_shape = st.sidebar.selectbox(
         "Forme",
@@ -504,8 +501,8 @@ else:
         "rotation_deg": float(synth_rot),
     }
 
-    # --- Trajet fictif de fautes / types / sévérités ---
-    # Mode démo: override automatique (pas de case à cocher)
+    # Trajet fictif de fautes / types / sévérités 
+    
     use_synth = True
     synth_fault_ratio = st.sidebar.slider("Proportion de fenêtres en défaut", 0.0, 1.0, 0.3, 0.05)
     synth_seed = st.sidebar.number_input("Seed aléatoire", 0, 10000, 42)
@@ -514,9 +511,9 @@ if X_windows is None or X_windows.shape[0] == 0:
     st.info("Waiting for a flight to start prediction...")
     st.stop()
 
-# =========================
+
 #  Trajectoire XY (global)
-# =========================
+
 def generate_synthetic_trajectory(
     n: int,
     shape: str = "lemniscate",
@@ -602,9 +599,9 @@ if n_pts > 0:
     elif synth_traj_opts is not None:
         traj_x, traj_y, traj_z = generate_synthetic_trajectory(n_pts, **synth_traj_opts)
 
-# =========================
+
 #  Prédictions pré-calculées
-# =========================
+
 with st.spinner("Resampling, normalisation et fenêtrage..."):
     deep_model, deep_device = load_deep_mtl_model(in_channels=int(X_windows.shape[2]), n_fault_types=len(FAULT_TYPE_NAMES)); results_all = predict_on_windows_deep(X_windows, deep_model, deep_device)
 
@@ -636,9 +633,9 @@ if mode.startswith("Demo flight"):
     results_all["Fault_Type_Name"] = results_all["Fault_Type"].apply(decode_fault_type)
 
 
-# =========================
+
 #  Analyse globale
-# =========================
+
 
 st.markdown("---")
 st.header("Predictive maintenance analysis")
@@ -660,7 +657,7 @@ if st.button("Lancer l'analyse du vol complet"):
         col2.metric("Temps en état défectueux", f"{100 * frac_fault:.1f} %")
         col3.metric("Sévérité moyenne (0–3)", f"{avg_sev:.2f}")
 
-        # 📊 Distribution des niveaux de sévérité (labels verticaux)
+        # Distribution des niveaux de sévérité (labels verticaux)
         st.subheader("Distribution of predicted severity levels")
         sev_counts = results["Severity_Level"].value_counts().sort_index()
 
@@ -673,7 +670,7 @@ if st.button("Lancer l'analyse du vol complet"):
 
         # Timeline sévérité + probabilité + fault_label
         if t_windows is not None and len(t_windows) == len(results):
-            st.subheader("🕒 Sévérité, probabilité & label de défaut dans le temps")
+            st.subheader(" Sévérité, probabilité & label de défaut dans le temps")
             df_timeline = pd.DataFrame({
                 "time": t_windows,
                 "Severity_Level": results["Severity_Level"].values,
@@ -682,7 +679,7 @@ if st.button("Lancer l'analyse du vol complet"):
             }).set_index("time")
             st.line_chart(df_timeline[["Severity_Level", "Fault_Prob"]])
 
-        # 🛠️ Trajectoire du drone globale
+        # Trajectoire du drone globale
         st.subheader("Drone trajectory (fault segments highlighted)")
         n_points = min(len(traj_x), len(results))
         fault_mask = results["Fault_Label"].values[:n_points] == 1
@@ -749,9 +746,8 @@ if st.button("Lancer l'analyse du vol complet"):
         st.dataframe(results[cols_to_show].head(30))
 
 
-# =========================
 #  Simulation
-# =========================
+
 
 st.markdown("---")
 st.header("Flight simulation & real-time monitoring")
@@ -778,7 +774,7 @@ if simulate and st.button("Démarrer la simulation"):
         fault_group = int(row["Fault_Type"]) if fault_label == 1 else 0
         t_cur = t_windows[i] if t_windows is not None and len(t_windows) > i else i * cfg.data.step_sec
 
-        # --- Header + image pivotée ---
+        # Header + image pivotée
         with placeholder_header.container():
             st.markdown(
                 f"### {'🔴' if fault_label else '🟢'} t = {t_cur:.2f}s — "
@@ -795,14 +791,14 @@ if simulate and st.button("Démarrer la simulation"):
             else:
                 st.write(f"Image manquante : {img_filename}")
 
-        # --- Metrics ---
+        # Metrics
         with placeholder_metrics.container():
             c1, c2, c3 = st.columns(3)
             c1.metric("Fault probability", f"{fault_prob:.2f}")
             c2.metric("Severity level", f"{sev_level}/3")
             c3.metric("Fault type", fault_type_name)
 
-        # --- Timeline temps réel (même style que l'analyse globale) ---
+        # Timeline temps réel (même style que l'analyse globale)
         df_sim = pd.DataFrame({
             "time": t_windows[: i + 1],
             "Severity_Level": results_all["Severity_Level"].values[: i + 1],
@@ -811,12 +807,11 @@ if simulate and st.button("Démarrer la simulation"):
         }).set_index("time")
         placeholder_plot.line_chart(df_sim[["Severity_Level", "Fault_Prob"]])
 
-        # --- Trajectoire XY (plus jolie) ---
+        # Trajectoire XY (plus jolie)
         n_points = i + 1
         fault_mask = results_all["Fault_Label"].values[:n_points] == 1
         sev_vals = results_all["Severity_Level"].values[:n_points]
 
-        # 2D supprimée; affichage uniquement en 3D ci-dessous
 
         # Affichage 3D de la trajectoire en simulation (override visuel)
         fig_s3d = go.Figure()
@@ -865,9 +860,9 @@ if simulate and st.button("Démarrer la simulation"):
     st.success("Simulation completed. Ready to be recorded for your video!")
 
 
-# =========================
+
 #  Explorer un instant précis
-# =========================
+
 
 st.markdown("---")
 st.header("Explore a flight instant")
