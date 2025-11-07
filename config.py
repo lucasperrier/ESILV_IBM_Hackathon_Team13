@@ -24,10 +24,8 @@ class TrainingConfig:
 
 @dataclass
 class ProjectConfig:
-    # ⚠️ Utilisation de default_factory pour éviter l’erreur
+    # Utilisation de default_factory pour éviter l’erreur
     data: DataConfig = field(default_factory=DataConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
 
-
-# instance globale du projet
 cfg = ProjectConfig()
