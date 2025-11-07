@@ -8,9 +8,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-from joblib import load
 from PIL import Image
 import plotly.graph_objects as go
+import torch
+from models.deep_mtl import CNNMTL
 import torch
 from models.deep_mtl import CNNMTL
 
@@ -22,9 +23,7 @@ from data.preprocessing import (
     normalize_df,
     sliding_windows,
 )
-from features.time_domain import extract_time_features_from_windows
-from features.freq_domain import extract_freq_features_from_windows
-from models.classical import predict_with_xgb  # garde ton import actuel
+# Removed XGBoost-specific feature engineering and predictor imports
 
 # Masquer le warning "precision loss" des moments statistiques
 warnings.filterwarnings(
@@ -321,33 +320,7 @@ def preprocess_flight_df(df_raw: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     return X, t_windows
 
 
-def predict_on_windows(X_windows: np.ndarray, models, feature_columns):
-    """
-    Features temps+freq + prédiction XGBoost sur un lot de fenêtres.
-    """
-    if X_windows.shape[0] == 0:
-        return pd.DataFrame()
-
-    df_time = extract_time_features_from_windows(X_windows)
-    df_freq = extract_freq_features_from_windows(X_windows, fs=cfg.data.target_fs)
-    X_feat_all = pd.concat([df_time, df_freq], axis=1)
-
-    X_feat = X_feat_all[feature_columns]
-
-    prob_fault, type_pred, sev_pred = predict_with_xgb(models, X_feat)
-
-    results = pd.DataFrame({
-        "Fault_Prob": prob_fault,
-        "Fault_Label": (prob_fault >= 0.5).astype(int),
-        "Fault_Type": type_pred,
-        "Severity_Continuous": sev_pred,
-        "Severity_Level": np.clip(np.round(sev_pred), 0, 3).astype(int),
-    })
-
-    # Ajout du label texte lisible
-    results["Fault_Type_Name"] = results["Fault_Type"].apply(decode_fault_type)
-
-    return results
+# Removed old XGBoost-based prediction function
 
 
 def predict_on_windows_deep(X_windows: np.ndarray, model: CNNMTL, device: str) -> pd.DataFrame:
@@ -423,9 +396,7 @@ Interface de démonstration de la maintenance prédictive pour drones :
 - monitoring simulé pour la vidéo de présentation.
 """)
 
-deep_model=None; deep_device="cpu"
-if False and models is None:
-    st.stop()
+# Deep MTL model will be loaded lazily after preprocessing
 
 st.sidebar.header("Demo Configuration")
 
@@ -979,22 +950,4 @@ if not results_all.empty:
     st.plotly_chart(fig_v3d, use_container_width=True)
 
 
-def predict_on_windows_deep(X_windows: np.ndarray, model: CNNMTL, device: str) -> pd.DataFrame:
-    if X_windows.shape[0] == 0 or model is None:
-        return pd.DataFrame()
-    x = torch.from_numpy(X_windows.astype(np.float32)).to(device)
-    with torch.no_grad():
-        logits_fault, logits_type, logits_sev = model(x)
-        prob_fault = torch.softmax(logits_fault, dim=1)[:, 1].cpu().numpy()
-        type_pred = torch.argmax(logits_type, dim=1).cpu().numpy()
-        sev_pred = torch.argmax(logits_sev, dim=1).cpu().numpy()
-    results = pd.DataFrame({
-        'Fault_Prob': prob_fault,
-        'Fault_Label': (prob_fault >= 0.5).astype(int),
-        'Fault_Type': type_pred,
-        'Severity_Continuous': sev_pred.astype(float),
-        'Severity_Level': np.clip(np.round(sev_pred), 0, 3).astype(int),
-    })
-    results['Fault_Type_Name'] = results['Fault_Type'].apply(decode_fault_type)
-    return results
 
