@@ -4,7 +4,9 @@ Fault detection and classification system using machine learning for time-series
 
 ## Demo Video
 
+The video is accessible there :
 
+https://youtu.be/ofiWijedRT4
 
 ## Quick Start
 
