@@ -84,7 +84,7 @@ def main():
     # b) décodage en triplets (pour éventuellement comparer aux anciennes métriques)
     y_fault_pred, y_type_pred, y_sev_pred = decode_combined_labels(y_combined_pred)
 
-    # ---- Évaluation sur les COMBINAISONS complètes ----
+    # Évaluation sur les COMBINAISONS complètes
     print("\n=== Évaluation sur les combinaisons complètes (fault, type, severity) ===")
     classes = np.unique(y_combined_test)  # les combinaisons réellement présentes
 
@@ -104,7 +104,6 @@ def main():
         f, t, s = decode_combined_labels(np.array([c]))
         print(f"  {c} -> (fault={int(f[0])}, type={int(t[0])}, sev={int(s[0])})")
 
-    # ---- (Optionnel) Analyse par tâche individuellement, si tu veux garder ça ----
     print("\n=== Détection de défaut (binaire, dérivé du label combiné) ===")
     from sklearn.metrics import f1_score as f1_bin, accuracy_score as acc_bin
     fault_acc = acc_bin(y_fault_test, y_fault_pred)

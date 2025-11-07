@@ -37,12 +37,10 @@ def parse_filename(fname: str) -> FlightLabels:
     Si certains éléments sont absents, on met des valeurs par défaut.
     """
 
-    # Extraire F, SV, SP, t via regex
-    # on ignore la partie "D1_" éventuelle au début
+    # Extraire F, SV, SP, t via regex on ignore la partie "D1_" éventuelle au début
     m = re.search(r"F(\d+)_SV(\d+)_SP(\d+)_t(\d+)", fname)
     if not m:
-        # fallback très simple si pattern inattendu
-        # on considère sain, severité 0, traj 0
+        # fallback très simple si pattern inattendu on considère sain, severité 0, traj 0
         return FlightLabels(
             healthy=1,
             fault_type="none",
